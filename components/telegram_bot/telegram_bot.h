@@ -81,12 +81,6 @@ namespace esphome
     }
  #endif
 
-    struct c_res_s
-    {
-      int i = 0;
-      struct mg_connection *c;
-    };
-
     class WebNotify : public Controller, public Component
     {
     public:
@@ -228,11 +222,13 @@ namespace esphome
 
       void set_bot_id_f(std::function<optional<std::string>()> &&f);
       void set_chat_id_f(std::function<optional<std::string>()> &&f);
-
+     
     private:
+      void ev_handler(struct mg_connection *c, int ev, void *ev_data);
+      static void ev_handler_cb(struct mg_connection *c, int ev, void *ev_data);
 
-      struct mg_mgr * mgr_;
-      static void notify_fn(struct mg_connection *c, int ev, void *ev_data);
+      struct mg_mgr  mgr_;
+     
 
       bool botRequest_{};
       bool skipFirst_{};
@@ -250,8 +246,7 @@ namespace esphome
       static void telegramTask(void *args);
       #endif
 
-      struct c_res_s c_res_;
-
+   
       std::string apiHost_ = "https://api.telegram.org/";
       int lastMsgReceived_ = 0;
       std::string botId_ = "";
@@ -275,8 +270,6 @@ namespace esphome
       optional<std::function<optional<std::string>()>> chat_id_f_{};
       optional<std::function<optional<std::string>()>> bot_id_f_{};
     };
-
-    extern WebNotify *global_notify;
 
     template <typename... Ts>
     class TelegramPublishAction : public Action<Ts...>
@@ -504,42 +497,44 @@ namespace esphome
         return true;
       }
 
-      explicit TelegramMessageTrigger(const std::string &cmd, const std::string &type)
+      explicit TelegramMessageTrigger(const std::string &cmd, const std::string &type,WebNotify * parent)
       {
-        global_notify->set_on_message([cmd, type, this](RemoteData &x)
-                                      {
-                                        std::string s = x.cmd;
-                                        // ESP_LOGD("test","callback is %d, type=%s,cmd=%s",x.is_callback,type.c_str(),cmd.c_str());
-                                        std::string bn=global_notify->get_bot_name();
-                                        if (x.to !="" && !stringsEqual(x.to,bn) )
-                                          return;
+                 //  ESP_LOGE("test","type=%s,cmd=%s",type.c_str(),cmd.c_str());
+        parent->set_on_message([cmd, type, this,parent](RemoteData &x)
+        {
+          std::string s = x.cmd;
+           //ESP_LOGE("test","callback is %d, type=%s,cmd=%s",x.is_callback,type.c_str(),cmd.c_str());
+          std::string bn=parent->get_bot_name();
+          if (x.to !="" && !stringsEqual(x.to,bn) )
+            return;
 
-                                        if (type == "callback")
-                                        {
-                                          if (!x.is_callback)
-                                            return;
-                                          s = x.text;
-                                        }
-                                        if (type == "cmd")
-                                        {
-                                          if (x.cmd == "" || x.is_callback)
-                                            return;
-                                        }
+          if (type == "callback")
+          {
+            if (!x.is_callback)
+              return;
+            s = x.text;
+          }
+          if (type == "cmd")
+          {
+            if (x.cmd == "" || x.is_callback)
+              return;
+          }
 
-                                        if (type == "text")
-                                        {
-                                          if (x.cmd != "" || x.is_callback)
-                                            return;
-                                          s = x.text;
-                                        }
-                                        
+          if (type == "text")
+          {
+            if (x.cmd != "" || x.is_callback)
+              return;
+            s = x.text;
+          }
+          
 
-                                        if (cmd.find("," + s + ",") != std::string::npos)
-                                          this->trigger(x);
-                                        if (cmd.find(",*,") != std::string::npos)
-                                          this->trigger(x); 
-                                        
-                                        });
+          if (cmd.find("," + s + ",") != std::string::npos)
+            this->trigger(x);
+            
+          if (cmd.find(",*,") != std::string::npos)
+            this->trigger(x); 
+          
+          });
       };
     };
 
